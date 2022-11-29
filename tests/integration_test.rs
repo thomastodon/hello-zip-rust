@@ -53,4 +53,24 @@ mod tests {
         let expected_response_payload: Value = serde_json::from_str(expected_response_body).unwrap();
         assert_eq!(actual_response_payload, expected_response_payload);
     }
+
+    #[actix_web::test]
+    async fn test_get_jamf_devices() {
+        let app = test::init_service(App::new().service(api())).await;
+
+        let req = test::TestRequest::get().uri("/api/jamf/devices").to_request();
+        let resp = test::call_service(&app, req).await;
+        assert!(resp.status().is_success());
+
+        let actual_response_payload: Value = test::read_body_json(resp).await;
+        let expected_response_body = r#"{"devices": [{
+            "device_id": "1",
+            "name": "macbook",
+            "model": "air",
+            "os": "catalina",
+            "os_is_latest": true
+        }]}"#;
+        let expected_response_payload: Value = serde_json::from_str(expected_response_body).unwrap();
+        assert_eq!(actual_response_payload, expected_response_payload);
+    }
 }
