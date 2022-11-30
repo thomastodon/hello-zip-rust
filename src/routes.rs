@@ -3,6 +3,8 @@ use actix_web::body::BoxBody;
 use actix_web::http::header::ContentType;
 use serde::{Deserialize, Serialize};
 
+use crate::jamf_client;
+
 pub fn api() -> Scope {
     return web::scope("/api")
         .service(hello)
@@ -45,14 +47,14 @@ async fn jamf_credentials(credentials: web::Json<Credentials>) -> impl Responder
     credentials
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Serialize)]
 struct Devices {
     devices: Vec<Device>,
 }
 
-#[derive(Deserialize, Serialize, Clone)]
+#[derive(Serialize, Clone)]
 struct Device {
-    device_id: String,
+    device_id: u64,
     name: String,
     model: String,
     os: String,
@@ -74,13 +76,29 @@ impl Responder for Devices {
 
 #[get("/jamf/devices")]
 async fn jamf_devices() -> impl Responder {
-    Devices {
-        devices: [Device {
-            device_id: String::from("1"),
-            name: String::from("macbook"),
-            model: String::from("air"),
-            os: String::from("catalina"),
+    let computers_response = jamf_client::get_computers().await;
+
+    let computer_ids = computers_response
+        .computers
+        .iter()
+        .map(|computer| computer.id)
+        .collect::<Vec<u128>>();
+
+    let mut devices: Vec<Device> = vec![];
+    for id in &computer_ids {
+        let computer = jamf_client::get_computer_by_id(id)
+            .await
+            .computer;
+
+        let device = Device {
+            device_id: computer.general.id,
+            name: computer.general.name,
+            model: computer.hardware.model,
+            os: computer.hardware.os_name,
             os_is_latest: true,
-        }].to_vec()
-    }
+        };
+        devices.push(device);
+    };
+
+    Devices { devices }
 }

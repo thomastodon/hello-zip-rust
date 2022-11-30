@@ -63,13 +63,13 @@ mod tests {
         assert!(resp.status().is_success());
 
         let actual_response_payload: Value = test::read_body_json(resp).await;
-        let expected_response_body = r#"{"devices": [{
-            "device_id": "1",
-            "name": "macbook",
-            "model": "air",
-            "os": "catalina",
-            "os_is_latest": true
-        }]}"#;
+        let expected_response_body = r#"{"devices": [
+        { "device_id": 1, "name": "Mac mini", "model": "Mac mini (2018)", "os": "macOS", "os_is_latest": true },
+        { "device_id": 2, "name": "Joshua’s MacBook Pro (2)", "model": "MacBook Pro (13-inch, M1, 2020)", "os": "macOS", "os_is_latest": true },
+        { "device_id": 3, "name": "Gabbi’s MacBook Pro", "model": "MacBook Pro (15-inch, 2018)", "os": "macOS", "os_is_latest": true },
+        { "device_id": 4, "name": "Ashley’s MacBook Pro", "model": "MacBook Pro (14-inch, 2021)", "os": "macOS", "os_is_latest": false },
+        { "device_id": 5, "name": "Nicholas’s MacBook Pro", "model": "MacBook Pro (16-inch, 2021)", "os": "macOS", "os_is_latest": false }
+        ]}"#;
         let expected_response_payload: Value = serde_json::from_str(expected_response_body).unwrap();
         assert_eq!(actual_response_payload, expected_response_payload);
     }
