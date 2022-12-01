@@ -1,6 +1,7 @@
 #[cfg(test)]
 mod tests {
     use actix_web::{App, test};
+    use dotenv::dotenv;
     use hello_zip_rust::routes::api;
     use serde_json::Value;
     use serde::{Serialize};
@@ -56,6 +57,8 @@ mod tests {
 
     #[actix_web::test]
     async fn test_get_jamf_devices() {
+        dotenv().ok();
+
         let app = test::init_service(App::new().service(api())).await;
 
         let req = test::TestRequest::get().uri("/api/jamf/devices").to_request();
@@ -64,11 +67,11 @@ mod tests {
 
         let actual_response_payload: Value = test::read_body_json(resp).await;
         let expected_response_body = r#"{"devices": [
-        { "device_id": 1, "name": "Mac mini", "model": "Mac mini (2018)", "os": "macOS", "os_is_latest": true },
-        { "device_id": 2, "name": "Joshua’s MacBook Pro (2)", "model": "MacBook Pro (13-inch, M1, 2020)", "os": "macOS", "os_is_latest": true },
-        { "device_id": 3, "name": "Gabbi’s MacBook Pro", "model": "MacBook Pro (15-inch, 2018)", "os": "macOS", "os_is_latest": true },
-        { "device_id": 4, "name": "Ashley’s MacBook Pro", "model": "MacBook Pro (14-inch, 2021)", "os": "macOS", "os_is_latest": false },
-        { "device_id": 5, "name": "Nicholas’s MacBook Pro", "model": "MacBook Pro (16-inch, 2021)", "os": "macOS", "os_is_latest": false }
+        { "device_id": 1, "name": "Mac mini", "model": "Mac mini (2018)", "os": "macOS 12.6.0", "os_is_latest": false },
+        { "device_id": 2, "name": "Joshua’s MacBook Pro (2)", "model": "MacBook Pro (13-inch, M1, 2020)", "os": "macOS 12.6.0", "os_is_latest": false },
+        { "device_id": 3, "name": "Gabbi’s MacBook Pro", "model": "MacBook Pro (15-inch, 2018)", "os": "macOS 12.6.0", "os_is_latest": false },
+        { "device_id": 4, "name": "Ashley’s MacBook Pro", "model": "MacBook Pro (14-inch, 2021)", "os": "macOS 12.5.0", "os_is_latest": false },
+        { "device_id": 5, "name": "Nicholas’s MacBook Pro", "model": "MacBook Pro (16-inch, 2021)", "os": "macOS 12.5.0", "os_is_latest": false }
         ]}"#;
         let expected_response_payload: Value = serde_json::from_str(expected_response_body).unwrap();
         assert_eq!(actual_response_payload, expected_response_payload);

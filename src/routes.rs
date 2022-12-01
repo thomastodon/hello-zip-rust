@@ -1,9 +1,10 @@
 use actix_web::{get, HttpRequest, HttpResponse, post, Responder, Scope, web};
 use actix_web::body::BoxBody;
 use actix_web::http::header::ContentType;
+use futures::{stream, StreamExt};
 use serde::{Deserialize, Serialize};
 
-use crate::jamf_client;
+use crate::jamf_client::{JamfClient};
 
 pub fn api() -> Scope {
     return web::scope("/api")
@@ -12,14 +13,57 @@ pub fn api() -> Scope {
         .service(jamf_devices);
 }
 
-#[derive(Serialize)]
-struct Hello {
-    data: String,
-}
-
 #[get("/hello")]
 async fn hello() -> impl Responder {
     web::Json(Hello { data: String::from("hello world!") })
+}
+
+#[post("/jamf/credentials")]
+async fn jamf_credentials(credentials: web::Json<Credentials>) -> impl Responder {
+    credentials
+}
+
+#[get("/jamf/devices")]
+async fn jamf_devices() -> impl Responder {
+    let jamf_client = JamfClient::new();
+
+    let updates = jamf_client.get_mac_os_managed_software_updates()
+        .await
+        .availableUpdates;
+    let latest_available_os = get_latest_semver(updates);
+
+    let computers_response = jamf_client
+        .get_computers()
+        .await;
+
+    let devices = stream::iter(computers_response.computers)
+        .map(|computer| jamf_client.get_computer_by_id(computer.id))
+        .buffered(5)
+        .map(|response| {
+            let computer = response.computer;
+            let os_name = computer.hardware.os_name.clone();
+            let os_version = computer.hardware.os_version.clone();
+            Device {
+                device_id: computer.general.id,
+                name: computer.general.name.clone(),
+                model: computer.hardware.model.clone(),
+                os: format!("{os_name} {os_version}"),
+                os_is_latest: computer.hardware.os_version.eq(&latest_available_os),
+            }
+        })
+        .collect::<Vec<Device>>()
+        .await;
+
+    Devices { devices }
+}
+
+fn get_latest_semver(semvers: Vec<String>) -> String {
+    semvers.get(0).unwrap().clone()
+}
+
+#[derive(Serialize)]
+struct Hello {
+    data: String,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -40,11 +84,6 @@ impl Responder for Credentials {
             .content_type(ContentType::json())
             .body(body)
     }
-}
-
-#[post("/jamf/credentials")]
-async fn jamf_credentials(credentials: web::Json<Credentials>) -> impl Responder {
-    credentials
 }
 
 #[derive(Serialize)]
@@ -74,31 +113,18 @@ impl Responder for Devices {
     }
 }
 
-#[get("/jamf/devices")]
-async fn jamf_devices() -> impl Responder {
-    let computers_response = jamf_client::get_computers().await;
 
-    let computer_ids = computers_response
-        .computers
-        .iter()
-        .map(|computer| computer.id)
-        .collect::<Vec<u128>>();
+#[cfg(test)]
+mod unit_tests {
+    use super::*;
 
-    let mut devices: Vec<Device> = vec![];
-    for id in &computer_ids {
-        let computer = jamf_client::get_computer_by_id(id)
-            .await
-            .computer;
+    #[test]
+    fn test_get_latest_semver() {
+        let semvers = ["13.0.1", "13.0", "12.6.1", "12.6", "12.5.1", "11.7.1", "11.7", "11.6.8"]
+            .map(|s| String::from(s))
+            .to_vec();
 
-        let device = Device {
-            device_id: computer.general.id,
-            name: computer.general.name,
-            model: computer.hardware.model,
-            os: computer.hardware.os_name,
-            os_is_latest: true,
-        };
-        devices.push(device);
-    };
-
-    Devices { devices }
+        let latest_semver = get_latest_semver(semvers);
+        assert_eq!(latest_semver, "13.0.1");
+    }
 }

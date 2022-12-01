@@ -1,79 +1,152 @@
 use reqwest::{Error, Response};
 use serde::{Deserialize};
 
-#[derive(Deserialize)]
-pub struct Computer {
-    pub(crate) id: u128,
+
+const JAMF_BASE_URL: &str = "https://ohmnfr.jamfcloud.com";
+
+pub(crate) struct JamfClient {
+    username: String,
+    password: Option<String>,
+    client: reqwest::Client,
 }
 
-#[derive(Deserialize)]
-pub struct GetComputersResponse {
-    pub(crate) computers: Vec<Computer>,
-}
+impl JamfClient {
+    pub(crate) fn new() -> JamfClient {
+        let username = match std::env::var("USERNAME") {
+            Ok(val) => val,
+            Err(error) => panic!("Failed to read username from .env file: {:?}", error),
+        };
 
-pub async fn get_computers() -> GetComputersResponse {
-    let client = reqwest::Client::new();
-    let username = std::env::var("USERNAME").unwrap();
-    let password = std::env::var("PASSWORD").ok();
-    let computers: Result<Response, Error> = client
-        .get("https://ohmnfr.jamfcloud.com/JSSResource/computers")
-        .header("accept", "application/json")
-        .basic_auth(username, password)
-        .send()
-        .await;
+        let password = match std::env::var("PASSWORD") {
+            Ok(val) => Some(val),
+            Err(error) => panic!("Failed to read password from .env file: {:?}", error),
+        };
 
-    let computers_response = match computers {
-        Ok(response) => response.json::<GetComputersResponse>().await,
-        Err(error) => panic!("Failed request to auth: {:?}", error),
-    };
+        let client = reqwest::Client::new();
 
-    match computers_response {
-        Ok(payload) => payload,
-        Err(error) => panic!("Failed to deser response payload: {:?}", error),
+        JamfClient { username, password, client }
+    }
+
+    async fn get_auth_token(&self) -> GetAuthTokenResponse {
+        let get_auth_token: Result<Response, Error> = self.client
+            .post(format!("{JAMF_BASE_URL}/api/v1/auth/token"))
+            .header("accept", "application/json")
+            .basic_auth(self.username.clone(), self.password.clone())
+            .send()
+            .await;
+
+        let get_auth_token_response = match get_auth_token {
+            Ok(response) => response.json::<GetAuthTokenResponse>().await,
+            Err(error) => panic!("Failed request: {:?}", error),
+        };
+
+        match get_auth_token_response {
+            Ok(payload) => payload,
+            Err(error) => panic!("Failed to deser response payload: {:?}", error),
+        }
+    }
+
+    pub(crate) async fn get_computers(&self) -> GetComputersResponse {
+        let get_computers: Result<Response, Error> = self.client
+            .get(format!("{JAMF_BASE_URL}/JSSResource/computers"))
+            .header("accept", "application/json")
+            .basic_auth(self.username.clone(), self.password.clone())
+            .send()
+            .await;
+
+        let computers_response = match get_computers {
+            Ok(response) => response.json::<GetComputersResponse>().await,
+            Err(error) => panic!("Failed request: {:?}", error),
+        };
+
+        match computers_response {
+            Ok(payload) => payload,
+            Err(error) => panic!("Failed to deser response payload: {:?}", error),
+        }
+    }
+
+    pub(crate) async fn get_computer_by_id(&self, id: u64) -> GetComputerByIdResponse {
+        let get_computer_by_id: Result<Response, Error> = self.client
+            .get(format!("{JAMF_BASE_URL}/JSSResource/computers/id/{id}"))
+            .header("accept", "application/json")
+            .basic_auth(self.username.clone(), self.password.clone())
+            .send()
+            .await;
+
+        let computer_hardware_response = match get_computer_by_id {
+            Ok(response) => response.json::<GetComputerByIdResponse>().await,
+            Err(error) => panic!("Failed request: {:?}", error),
+        };
+
+        match computer_hardware_response {
+            Ok(payload) => payload,
+            Err(error) => panic!("Failed to deser response payload: {:?}", error),
+        }
+    }
+
+    pub(crate) async fn get_mac_os_managed_software_updates(&self) -> GetMacOsManagedSoftwareUpdatesResponse {
+        let token = self.get_auth_token().await.token;
+
+        let get_mac_os_managed_software_updates: Result<Response, Error> = self.client
+            .get(format!("{JAMF_BASE_URL}/api/v1/macos-managed-software-updates/available-updates"))
+            .header("accept", "application/json")
+            .bearer_auth(token)
+            .send()
+            .await;
+
+        let get_mac_os_managed_software_updates_response = match get_mac_os_managed_software_updates {
+            Ok(response) => response.json::<GetMacOsManagedSoftwareUpdatesResponse>().await,
+            Err(error) => panic!("Failed request: {:?}", error),
+        };
+
+        match get_mac_os_managed_software_updates_response {
+            Ok(payload) => payload,
+            Err(error) => panic!("Failed to deser response payload: {:?}", error),
+        }
     }
 }
 
 #[derive(Deserialize)]
-pub struct GetComputerByIdResponse {
+struct GetAuthTokenResponse {
+    token: String,
+}
+
+#[derive(Deserialize)]
+pub(crate) struct Computer {
+    pub(crate) id: u64,
+}
+
+#[derive(Deserialize)]
+pub(crate) struct GetComputersResponse {
+    pub(crate) computers: Vec<Computer>,
+}
+
+#[derive(Deserialize)]
+pub(crate) struct GetComputerByIdResponse {
     pub computer: ComputerDetail,
 }
 
 #[derive(Deserialize)]
-pub struct ComputerDetail {
+pub(crate) struct ComputerDetail {
     pub general: ComputerGeneral,
     pub hardware: ComputerHardware,
 }
 
 #[derive(Deserialize)]
-pub struct ComputerGeneral {
+pub(crate) struct ComputerGeneral {
     pub id: u64,
     pub name: String,
 }
 
 #[derive(Deserialize)]
-pub struct ComputerHardware {
+pub(crate) struct ComputerHardware {
     pub model: String,
     pub os_name: String,
+    pub os_version: String,
 }
 
-pub async fn get_computer_by_id(id: &u128) -> GetComputerByIdResponse {
-    let client = reqwest::Client::new();
-    let username = std::env::var("USERNAME").unwrap();
-    let password = std::env::var("PASSWORD").ok();
-    let mobile_device_data_subset: Result<Response, Error> = client
-        .get(format!("https://ohmnfr.jamfcloud.com/JSSResource/computers/id/{id}"))
-        .header("accept", "application/json")
-        .basic_auth(username, password)
-        .send()
-        .await;
-
-    let computer_hardware_response = match mobile_device_data_subset {
-        Ok(response) => response.json::<GetComputerByIdResponse>().await,
-        Err(error) => panic!("Failed request to auth: {:?}", error),
-    };
-
-    match computer_hardware_response {
-        Ok(payload) => payload,
-        Err(error) => panic!("Failed to deser response payload: {:?}", error),
-    }
+#[derive(Deserialize)]
+#[allow(non_snake_case)]
+pub(crate) struct GetMacOsManagedSoftwareUpdatesResponse {
+    pub(crate) availableUpdates: Vec<String>,
 }
